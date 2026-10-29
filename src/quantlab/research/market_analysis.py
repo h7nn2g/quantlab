@@ -55,19 +55,3 @@ def covariance_matrix(returns: pd.DataFrame) -> pd.DataFrame:
         for ticker_b in returns.columns:
             matrix[ticker_a][ticker_b] = covariance(returns[ticker_a], returns[ticker_b])
     return pd.DataFrame(matrix)
-
-prices = load_assets(
-    ["SPY", "QQQ", "TSM"],
-    start="2025-01-01",
-    end="2026-01-01"
-)
-
-returns = calculate_returns(prices)
-
-print(volatility_report(returns))
-print(correlation_matrix(returns))
-
-cov_matrix = covariance_matrix(returns)
-
-print(cov_matrix)
-print(returns.cov())
