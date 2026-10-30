@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from quantlab.backtesting.engine import strategy_returns, equity_curve, maximum_drawdown, sharpe_ratio
+from quantlab.backtesting.engine import strategy_returns, equity_curve, maximum_drawdown, sharpe_ratio, performance_report
 
 def test_strategy_returns():
     asset_returns = pd.Series([0.02, -0.03, 0.01, 0.04])
@@ -500,3 +500,163 @@ def test_sharpe_ratio_preserves_input():
     sharpe_ratio(returns)
 
     pd.testing.assert_series_equal(returns, original)
+
+def test_performance_report_basic():
+    returns = pd.Series([0.05, -0.10, 0.03])
+
+    report = performance_report(returns)
+
+    assert report["Initial_capital"] == pytest.approx(10000.0)
+    assert report["Final_equity"] == pytest.approx(9733.5)
+    assert report["Total_return"] == pytest.approx(-0.02665)
+    assert report["Annualised_return"] == pytest.approx(
+        0.97335 ** (252 / 3) - 1
+    )
+    assert report["Maximum_drawdown"] == pytest.approx(-0.10)
+
+
+def test_performance_report_keys():
+    returns = pd.Series([0.05, -0.10, 0.03])
+
+    report = performance_report(returns)
+
+    expected_keys = {
+        "Initial_capital",
+        "Final_equity",
+        "Total_return",
+        "Annualised_return",
+        "Annualised_volatility",
+        "Sharpe_ratio",
+        "Maximum_drawdown",
+    }
+
+    assert set(report.keys()) == expected_keys
+
+
+def test_performance_report_volatility():
+    returns = pd.Series([0.01, -0.02, 0.03, 0.015])
+
+    report = performance_report(returns)
+
+    expected = returns.std(ddof=1) * np.sqrt(252)
+
+    assert report["Annualised_volatility"] == pytest.approx(expected)
+
+
+def test_performance_report_sharpe():
+    returns = pd.Series([0.01, -0.02, 0.03, 0.015])
+
+    report = performance_report(returns)
+
+    expected = (
+        returns.mean() / returns.std(ddof=1)
+    ) * np.sqrt(252)
+
+    assert report["Sharpe_ratio"] == pytest.approx(expected)
+
+
+def test_performance_report_custom_capital():
+    returns = pd.Series([0.10, -0.05, 0.02])
+
+    report = performance_report(
+        returns,
+        initial_capital=5000.0
+    )
+
+    expected_final = 5000 * 1.10 * 0.95 * 1.02
+
+    assert report["Initial_capital"] == pytest.approx(5000)
+    assert report["Final_equity"] == pytest.approx(expected_final)
+
+
+def test_performance_report_custom_trading_days():
+    returns = pd.Series([0.01, -0.02, 0.03, 0.015])
+
+    report = performance_report(
+        returns,
+        trading_days=365
+    )
+
+    total_growth = (1 + returns).prod()
+
+    expected_cagr = total_growth ** (365 / len(returns)) - 1
+    expected_vol = returns.std(ddof=1) * np.sqrt(365)
+
+    assert report["Annualised_return"] == pytest.approx(expected_cagr)
+    assert report["Annualised_volatility"] == pytest.approx(expected_vol)
+
+
+def test_performance_report_drawdown_from_initial_capital():
+    returns = pd.Series([-0.20, 0.10, 0.05])
+
+    report = performance_report(returns)
+
+    # Initial 10000 -> 8000 -> 8800 -> 9240
+    assert report["Maximum_drawdown"] == pytest.approx(-0.20)
+
+
+def test_performance_report_matches_compounding():
+    returns = pd.Series([0.03, -0.02, 0.04, -0.01])
+
+    report = performance_report(returns)
+
+    expected_final = 10000 * (1 + returns).prod()
+    expected_total = expected_final / 10000 - 1
+
+    assert report["Final_equity"] == pytest.approx(expected_final)
+    assert report["Total_return"] == pytest.approx(expected_total)
+
+
+def test_performance_report_preserves_input():
+    returns = pd.Series([0.01, -0.02, 0.03])
+    original = returns.copy(deep=True)
+
+    performance_report(returns)
+
+    pd.testing.assert_series_equal(returns, original)
+
+
+@pytest.mark.parametrize("values", [
+    [],
+    [0.01],
+    [0.01, np.nan, 0.03],
+    [0.01, np.inf, 0.03],
+    [0.01, -np.inf, 0.03],
+    [0.01, -1.5, 0.03],
+])
+def test_performance_report_invalid_returns(values):
+    returns = pd.Series(values, dtype=float)
+
+    with pytest.raises(ValueError):
+        performance_report(returns)
+
+
+@pytest.mark.parametrize("capital", [
+    0,
+    -100,
+    np.nan,
+    np.inf,
+    True,
+    "10000",
+    None,
+])
+def test_performance_report_invalid_capital(capital):
+    returns = pd.Series([0.01, -0.02, 0.03])
+
+    with pytest.raises(ValueError):
+        performance_report(returns, initial_capital=capital)
+
+
+@pytest.mark.parametrize("trading_days", [
+    0,
+    -1,
+    2.5,
+    True,
+    "252",
+    None,
+])
+def test_performance_report_invalid_trading_days(trading_days):
+    returns = pd.Series([0.01, -0.02, 0.03])
+
+    with pytest.raises(ValueError):
+        performance_report(returns, trading_days=trading_days)

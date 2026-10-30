@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from math import sqrt
 
-from quantlab.analytics.statistics import daily_volatility
+from quantlab.analytics.statistics import daily_volatility, annualised_volatility
 
 def strategy_returns(asset_returns: pd.Series, positions: pd.Series) -> pd.Series:
     if asset_returns.empty or not np.isfinite(asset_returns).all():
@@ -63,3 +63,32 @@ def sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.0, trading_days: 
 
     sharpe_ratio = (mean_return - risk_free_rate / trading_days) / dv * sqrt(trading_days)
     return float(sharpe_ratio)
+
+def performance_report(returns: pd.Series, initial_capital: float = 10000.0, trading_days: int = 252) -> dict:
+    report = {}
+    equity = equity_curve(returns, initial_capital)
+    final_equity = equity.iloc[-1]
+
+    volatility = annualised_volatility(returns, trading_days)
+
+    total_return = final_equity / initial_capital - 1
+    annualised_return = (final_equity / initial_capital) ** (trading_days / len(returns)) - 1
+
+    drawdown_equity = maximum_drawdown(pd.concat([pd.Series([initial_capital]), equity.reset_index(drop=True)], ignore_index=True))
+
+    sharpe = sharpe_ratio(returns, 0, trading_days)
+
+    report["Initial_capital"] = initial_capital
+    report["Final_equity"] = final_equity
+    report["Total_return"] = total_return
+    report["Annualised_return"] = annualised_return
+    report["Annualised_volatility"] = volatility
+    report["Sharpe_ratio"] = sharpe
+    report["Maximum_drawdown"] = drawdown_equity
+
+    return report
+
+returns = pd.Series([0.05, -0.10, 0.03])
+report = performance_report(returns)
+
+print(report)
